@@ -1,0 +1,446 @@
+import argparse, numpy, pdb 
+import scipy.linalg, scipy.sparse, scipy.sparse.linalg, scipy.optimize, sys, scipy.integrate
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from calculus import *
+from spline import *
+
+def insert_shock_absorbers(struct_mesh_dict,grid_ids,ks,bs,ms,M,B,K,ndof):
+    #insere os absorvedores mecanicos nos pontos com grid_id listados. grid_ids, ks e bs devem ser listas, com o numero do grid de identificacao do nastran, rigidez e amortecimento do absorverdor a ser incluido na regiao. clamped_nodes eh o numero de nos engastados e para funcionar todos devem ser os primeiros na lista de grids do nastran. Considera massa, rigidez e amortecimento dos absorvedores igual em todas as direcoes.
+    newK = numpy.zeros((K.shape[0]+len(grid_ids),K.shape[1]+len(grid_ids)))
+    newM = numpy.zeros_like(newK)
+    newK[:K.shape[0],:K.shape[1]] = K[:,:]
+    newM[:M.shape[0],:M.shape[1]] = M[:,:]
+    newB = numpy.zeros_like(newK,dtype=complex)
+    newB[:B.shape[0],:B.shape[1]] = B[:,:]
+    for i,grid in enumerate(grid_ids):
+       #grid = numpy.argwhere(struct_mesh_dict['full_set']['grid_map']==grid)[0][0] +1
+        for dof in [2]:
+            if ndof == 1:
+                dof = 0
+            newK[(grid)*ndof+dof,(grid)*ndof+dof] += ks[i] #+2 para aplicar em Z
+            newK[K.shape[0]+i,(grid)*ndof+dof] -= ks[i] #+2 para aplicar em Z
+            newK[(grid)*ndof+dof,K.shape[1]+i] -= ks[i] #+2 para aplicar em Z
+            newK[K.shape[0]+i,K.shape[1]+i] += ks[i]
+            newM[M.shape[0]+i,M.shape[1]+i] += ms[i] 
+           #newM[M.shape[0]+i,(grid-1)*ndof+dof] += ms[i] 
+            newB[(grid)*ndof+dof,(grid)*ndof+dof] += bs[i] #+2 para aplicar em Z
+            newB[K.shape[0]+i,(grid)*ndof+dof] -= bs[i] #+2 para aplicar em Z
+            newB[(grid)*ndof+dof,K.shape[1]+i] -= bs[i] #+2 para aplicar em Z
+            newB[K.shape[0]+i,K.shape[1]+i] += bs[i]
+    return newK, newB, newM
+
+def insert_tshock_absorbers(struct_mesh_dict,grid_ids,ks,bs,Is,M,B,K,ndof):
+    newK = numpy.zeros((K.shape[0]+len(grid_ids),K.shape[1]+len(grid_ids)))
+    newM = numpy.zeros_like(newK)
+    newK[:K.shape[0],:K.shape[1]] = K[:,:]
+    newM[:M.shape[0],:M.shape[1]] = M[:,:]
+    newB = numpy.zeros_like(newK,dtype=complex)
+    newB[:B.shape[0],:B.shape[1]] = B[:,:]
+    keys = struct_mesh_dict.keys()
+    ny = struct_mesh_dict[keys[0]]['y'].shape[1]
+    dx = struct_mesh_dict[keys[0]]['dx']
+    for i,grid in enumerate(grid_ids):
+       #grid = numpy.argwhere(struct_mesh_dict['full_set']['grid_map']==grid)[0][0] +1
+        for dof in [2]:
+            if ndof == 1:
+                dof = 0
+           #newK[(grid)*ndof+dof,(grid)*ndof+dof] += ks[i] #+2 para aplicar em Z
+            newK[K.shape[0]+i,(grid+ny)*ndof+dof] += K[(grid)*ndof+dof,(grid)*ndof+dof]*dx #+2 para aplicar em Z
+            newK[K.shape[0]+i,(grid-ny)*ndof+dof] -= K[(grid)*ndof+dof,(grid)*ndof+dof]*dx #+2 para aplicar em Z
+           #newK[(grid+ny)*ndof+dof,K.shape[1]+i] += K[(grid)*ndof+dof,(grid)*ndof+dof]*dx #+2 para aplicar em Z
+           #newK[(grid-ny)*ndof+dof,K.shape[1]+i] -= K[(grid)*ndof+dof,(grid)*ndof+dof]*dx #+2 para aplicar em Z
+            newK[K.shape[0]+i,K.shape[1]+i] += ks[i]
+            newM[M.shape[0]+i,M.shape[1]+i] += Is[i] 
+           #newM[M.shape[0]+i,(grid-1)*ndof+dof] += ms[i] 
+           #newB[(grid)*ndof+dof,(grid)*ndof+dof] += bs[i] #+2 para aplicar em Z
+            newB[K.shape[0]+i,(grid+ny)*ndof+dof] += B[(grid)*ndof+dof,(grid)*ndof+dof]*dx #+2 para aplicar em Z
+            newB[K.shape[0]+i,(grid-ny)*ndof+dof] -= B[(grid)*ndof+dof,(grid)*ndof+dof]*dx #+2 para aplicar em Z
+           #newB[(grid+ny)*ndof+dof,K.shape[1]+i] += B[(grid)*ndof+dof,(grid)*ndof+dof]*dx #+2 para aplicar em Z
+           #newB[(grid-ny)*ndof+dof,K.shape[1]+i] -= B[(grid)*ndof+dof,(grid)*ndof+dof]*dx #+2 para aplicar em Z
+            newB[K.shape[0]+i,K.shape[1]+i] += bs[i]
+    return newK, newB, newM
+
+def insert_modal_absorbers(struct_mesh_dict,grid_ids,ks,bs,ms,Mhh,Bhh,Khh,phi,omega_n):
+    #insere os absorvedores mecanicos nos pontos com grid_id listados. grid_ids, ks e bs devem ser listas, com o numero do grid de identificacao do nastran, rigidez e amortecimento do absorverdor a ser incluido na regiao. clamped_nodes eh o numero de nos engastados e para funcionar todos devem ser os primeiros na lista de grids do nastran. Considera massa, rigidez e amortecimento dos absorvedores igual em todas as direcoes.
+    newK = numpy.zeros((Khh.shape[0]+len(grid_ids),Khh.shape[1]+len(grid_ids)))
+    newM = numpy.zeros_like(newK)
+    newK[:Khh.shape[0],:Khh.shape[1]] = Khh[:,:]
+    newM[:Mhh.shape[0],:Mhh.shape[1]] = Mhh[:,:]
+    newB = numpy.zeros_like(newK)
+    newB[:Bhh.shape[0],:Bhh.shape[1]] = Bhh[:,:]
+    newphi = numpy.zeros((phi.shape[0]+len(grid_ids),phi.shape[1]+len(grid_ids)))
+    newphi[:phi.shape[0],:phi.shape[1]] = phi[:,:]
+    omega_new = numpy.zeros(len(omega_n)+len(grid_ids))
+    omega_new[:len(omega_n)] = omega_n[:]
+    for i,grid in enumerate(grid_ids):
+        newphi[i+phi.shape[0],i+phi.shape[1]]
+        newK[Khh.shape[0]+i,Khh.shape[0]+i] = ks[i]
+        newM[Khh.shape[0]+i,Khh.shape[0]+i] = ms[i]
+        newB[Khh.shape[0]+i,Khh.shape[0]+i] = bs[i]/(2*numpy.sqrt(ks[i]*ms[i]))
+        omega_new[len(omega_n)+i] = numpy.sqrt(ks[i]/ms[i])
+    return newK, newB, newM, newphi, omega_new
+
+
+def FRF(struct_mesh_dict,omegas,ndof,grids_wall,ref_grid,phi,Mhh,M,Khh,K,Bhh=None,B=None,n_abs=0):
+    '''calcula a funcao de resposta em frequencia para as freq omegas 
+especificadas, retornando. Aplica uma excitacao de base de amplitude unitaria. n_grid_wall eh o numero de elementos na parede a ser excitada.'''
+    Ay = numpy.zeros((phi.shape[0],1))
+    frf = []
+    if n_abs != 0:
+        if ndof == 1:
+            Mtot = numpy.sum(numpy.diag(M)[0:-n_abs])
+            m = Mtot/((M.shape[0]-n_abs)/ndof + n_abs)
+        elif ndof == 6:
+            Mtot = numpy.sum(numpy.diag(M)[2:-n_abs:ndof])
+            m = Mtot/((M.shape[0]-n_abs)/ndof + n_abs)
+    else:
+        if ndof == 1:
+            Mtot = numpy.sum(numpy.diag(M))
+            m = Mtot/(M.shape[0]/ndof)
+        elif ndof == 6:
+            Mtot = numpy.sum(numpy.diag(M)[2::ndof])
+            m = Mtot/(M.shape[0]/ndof)
+    m = 2700*(0.03*0.003125)
+   #Ay[2:ndof*n_grid_wall:ndof] = 1.0
+   #Ay[1:ndof*n_grid_wall+1:ndof] = 1.0
+   #if n_abs == 0:
+   #for i in grids_wall:
+   #    Ay[ndof*(i)+2] = 1.0e-3 #+2 z direction
+    if ndof == 1:
+        Ay[:] = 1.0 
+    elif ndof == 6:
+        Ay[2::ndof] = 1.0 #+2 z direction
+    if n_abs != 0:
+        Ay[-n_abs:] = numpy.ones((n_abs,1))
+   #else:
+   #    Ay[2::ndof] = 1.0e-3
+    if Bhh==None:
+        Bhh = numpy.zeros_like(K)
+       #B = numpy.zeros_like(K)
+    ##Adding rb mode:
+   #phi = numpy.hstack([Ay,phi])
+   #Mhhn = numpy.eye(phi.shape[1])*Mhh[0,0]
+   #Khhn = numpy.zeros((phi.shape[1],phi.shape[1]))
+   #Bhhn = numpy.zeros((phi.shape[1],phi.shape[1]))
+   #Mhhn[1:,1:]=Mhh
+   #Khhn[1:,1:]=Khh
+   #Bhhn[1:,1:]=Bhh
+   #Mhh = Mhhn
+   #Khh = Khhn
+   #Bhh = Bhhn
+
+   #M = scipy.sparse.csc_matrix(M)
+   #K = scipy.sparse.csc_matrix(K)
+   #B = scipy.sparse.csc_matrix(B)
+   #Krel = scipy.sparse.csc_matrix(Krel)
+   #Brel = scipy.sparse.csc_matrix(Brel)
+   #Ay = scipy.sparse.csc_matrix(Ay).T
+   #Ay = numpy.dot(phi.T,Ay)
+    all_grids = [ref_grid]
+   #all_grids = [ref_grid] + range(1,n_abs+1)
+    all_grids = numpy.array(all_grids)
+    F = numpy.dot(phi.T,m*Ay)
+   #F = numpy.dot(phi.T,numpy.dot(M,Ay))
+    for i,f in enumerate(omegas):
+        sys.stdout.write('Calculada freq {} de {}\r'.format(i+1,len(omegas)))
+        sys.stdout.flush()
+       #Frel = numpy.dot((-B*1j*f-K),Ay)
+       #Frel = numpy.dot((Bhh*1j*f+Khh),Ay)
+        Frel = -F*1e-3*(f)**2
+       #Frel = numpy.dot(phi.T,Frel)       
+       #Frel = scipy.sparse.csc_matrix(Frel)
+        A = numpy.dot(numpy.linalg.inv(-Mhh*f**2+Bhh*1j*f+Khh),Frel)
+       #A = numpy.absolute(numpy.dot(numpy.linalg.inv(-Mhh*f**2+Bhh*1j*f+Khh),numpy.dot(M,Ay*f**2)))
+       #pdb.set_trace()
+        frf.append((numpy.absolute(numpy.dot(phi,A)[(all_grids-1)*ndof+2,:][0,0]))/(1.0e-3)) #adding 1E-3 to manually consider translational mode
+       #frf.append((numpy.absolute(1e-3+numpy.max(numpy.dot(phi,A))))/(1.0e-3)) #adding 1E-3 to manually consider translational mode
+       #frf.append((numpy.absolute(numpy.dot(phi,A)[(all_grids-1)*ndof+2,:][0,0]))/(numpy.absolute(numpy.dot(phi,A)[(grids_wall[0])*ndof+2,:][0]))) #adding 1E-3 to manually consider translational mode
+       #A = numpy.absolute(numpy.dot(numpy.dot(numpy.linalg.inv(-M*f**2+B*1j+K),-B*1j*f-K),Ay))
+       #A = numpy.absolute(scipy.sparse.linalg.inv(-M*f**2+B*1j*f+K).dot(numpy.sum(M[1+ndof*grids_wall,1+ndof*grids_wall])*Ay*f**2))
+       #if n_abs==0:
+       #    frf.append(A.toarray()[(all_grids-1)*ndof+1]/1E-3)
+       #else:
+       #    frf.append(A.toarray()[(all_grids-1)*ndof+1]/1E-3)
+       #   #frf.append(max(A[n_grid_wall:-n_abs]).toarray()[0])
+    frf = numpy.array(frf)
+    return frf
+
+def FRF_aero(GAF,v,rho,semi_chord,ks,struct_mesh_dict,omegas,ndof,grids_wall,ref_grid,phi,Mhh,M,Khh,K,Bhh=None,B=None,n_abs=0):
+    '''calcula a funcao de resposta em frequencia para as freq omegas 
+especificadas, retornando. Aplica uma excitacao de base de amplitude unitaria. n_grid_wall eh o numero de elementos na parede a ser excitada.'''
+    Ay = numpy.zeros((phi.shape[0],1))
+    frf = []
+    if n_abs != 0:
+        if ndof == 1:
+            Mtot = numpy.sum(numpy.diag(M)[0:-n_abs])
+            m = Mtot/((M.shape[0]-n_abs)/ndof + n_abs)
+        elif ndof == 6:
+            Mtot = numpy.sum(numpy.diag(M)[2:-n_abs:ndof])
+            m = Mtot/((M.shape[0]-n_abs)/ndof + n_abs)
+    else:
+        if ndof == 1:
+            Mtot = numpy.sum(numpy.diag(M))
+            m = Mtot/(M.shape[0]/ndof)
+        elif ndof == 6:
+            Mtot = numpy.sum(numpy.diag(M)[2::ndof])
+            m = Mtot/(M.shape[0]/ndof)
+    m = 2700*(0.03*0.003125)
+    if ndof == 1:
+        Ay[:] = 1.0 
+    elif ndof == 6:
+        Ay[2::ndof] = 1.0 #+2 z direction
+    if n_abs != 0:
+        Ay[-n_abs:] = numpy.ones((n_abs,1))
+    if Bhh==None:
+        Bhh = numpy.zeros_like(K)
+    all_grids = [ref_grid]
+    all_grids = numpy.array(all_grids)
+   #F = numpy.dot(phi.T,numpy.dot(M,Ay))
+    F = numpy.dot(phi.T,m*Ay)
+    for i,f in enumerate(omegas):
+        sys.stdout.write('Calculada freq {} de {}\r'.format(i+1,len(omegas)))
+        sys.stdout.flush()
+        kfl = f*semi_chord/v
+        if kfl <= ks[-1]:
+            newGAF = interp_GAF(GAF,ks,kfl) #kfl flow reduced frequency 
+        else:
+            newGAF = (GAF[:,:,-1]-GAF[:,:,-2])*(kfl-ks[-1])/(ks[-1]-ks[-2]) + GAF[:,:,-1]
+
+        Frel = -F*1e-3*(f)**2
+        A = numpy.absolute(numpy.dot(numpy.linalg.inv(-Mhh*f**2+(Bhh-0.5*rho*semi_chord*v*newGAF.imag/kfl)*1j*f+(Khh-0.5*rho*v**2*newGAF.real)),Frel))
+        frf.append((numpy.absolute(numpy.dot(phi,A)[(all_grids-1)*ndof+2,:][0,0]))/(1.0e-3)) #adding 1E-3 to manually consider translational mode
+    frf = numpy.array(frf)
+    return frf
+
+def transmissibility(struct_mesh_dict,omegas,grids_ids,ref_grid,ndof,nmodes,phi,omega_n,mi,Mtot,tmode,zeta,zeta_abs,yb,nabs=0):
+    '''Calculates the transmissibility function using modal approach'''
+    frf = []
+    mi = numpy.array(mi)
+    if nabs != 0:
+        omega_nt = []
+        for i,md in enumerate(tmode):
+            if type(tmode[i]) == type('Hz'):
+                omega_nt.append(float(tmode[i].replace('Hz',''))*mi[i]*2*numpy.pi)
+            else:
+                omega_nt.append(omega_n[tmode[i]])
+        omegat = 2.0/(1+numpy.sqrt(1+mi))*numpy.array(omega_nt)
+    ybhh = numpy.zeros_like(numpy.dot(numpy.linalg.pinv(phi),yb))
+    if ndof == 1:
+        ybhh = numpy.dot(numpy.linalg.pinv(phi),yb)
+    else:
+        for dof in [2]:
+           ybhh  += numpy.dot(numpy.linalg.pinv(phi[dof::ndof,:]),yb[dof::ndof])
+    for j,omega in enumerate(omegas):
+       #sys.stdout.write('Calculada freq {} de {}\r'.format(j+1,len(omegas)))
+       #sys.stdout.flush()
+        Q = numpy.zeros(phi.shape[1],dtype=complex)
+        eta = numpy.zeros(phi.shape[1],dtype=complex)
+        for mode in range(phi.shape[1]):
+            if nabs != 0:
+                abs_term = 0
+                for ii in range(len(mi)):
+                    abs_term += mi[ii]*omegat[ii]**2/(omegat[ii]**2-omega**2+2*1j*zeta_abs[ii]*omegat[ii]*omega)
+                Q[mode]  = omega**2*(1+abs_term)*ybhh[mode,0]
+                eta[mode] = Q[mode]/(omega_n[mode]**2-omega**2*(1+abs_term)+2*1j*zeta[mode]*omega_n[mode]*omega)
+            else:
+                Q[mode]  =  omega**2*ybhh[mode,0]
+                eta[mode] = Q[mode]/(omega_n[mode]**2-omega**2+2*1j*zeta[mode]*omega_n[mode]*omega)
+        if ndof == 1:        
+            frf.append(numpy.dot(phi[ref_grid-1,:],eta[:])/yb[ref_grid-1,0])
+        else:
+            frf.append(numpy.dot(phi[(ref_grid-1)*ndof+2,:],eta[:])/yb[(ref_grid-1)*ndof+2,0])
+            
+    return frf
+
+def aero_transmissibility(GAF,rho,Mhh,Khh,Chh,ks,semi_chord,v,struct_mesh_dict,omegas,grids_ids,ref_grid,ndof,nmodes,phi0,omega_n,mi,Mtot,tmode,zeta,zeta_abs,yb,nabs=0):
+    '''Calculates the transmissibility function using modal approach'''
+    frf = []
+    mi = numpy.array(mi)
+    if nabs != 0:
+        omega_nt = []
+        for i,md in enumerate(tmode):
+            if type(tmode[i]) == type('Hz'):
+                omega_nt.append(float(tmode[i].replace('Hz',''))*mi[i]*2*numpy.pi)
+            else:
+                omega_nt.append(omega_n[tmode[i]])
+        omegat = 2.0/(1+numpy.sqrt(1+mi))*numpy.array(omega_nt)
+    for j,omega in enumerate(omegas):
+       #sys.stdout.write('Calculada freq {} de {}\r'.format(j+1,len(omegas)))
+       #sys.stdout.flush()
+        kfl = omega*semi_chord/v
+        if kfl <= ks[-1]:
+            newGAF = interp_GAF(GAF,ks,kfl) #kfl flow reduced frequency 
+        else:
+            newGAF = (GAF[:,:,-1]-GAF[:,:,-2])*(kfl-ks[-1])/(ks[-1]-ks[-2]) + GAF[:,:,-1]
+        Q = numpy.zeros(phi0.shape[1],dtype=complex)
+        eta = numpy.zeros(phi0.shape[1],dtype=complex)
+        A = numpy.vstack([numpy.hstack([numpy.zeros_like(Mhh),numpy.eye(Mhh.shape[0])]),\
+            numpy.hstack([numpy.dot(-numpy.linalg.inv(Mhh),Khh-0.5*rho*v**2*newGAF.real),numpy.dot(-numpy.linalg.inv(Mhh),Chh-0.5*rho*semi_chord*v*newGAF.imag/kfl)])])
+        val, vec = numpy.linalg.eig(A)
+        ind_sort = numpy.argsort(val.imag)
+        val = val[ind_sort][Mhh.shape[0]:2*Mhh.shape[0]]
+        vec = vec[Mhh.shape[0]:Mhh.shape[0]*2,ind_sort][:,Mhh.shape[0]:2*Mhh.shape[0]]
+        phi = numpy.dot(phi0,vec)
+        zeta_new = numpy.zeros(nmodes)
+        omega_new = numpy.zeros(nmodes)
+        for i in range(nmodes):
+            if val.imag[i] <= 0:
+                zeta_new[i] = val.real[i]/omega_n[i]
+                omega_new[i] = omega_n[i]
+            else:
+                xx = val.real[i]/val.imag[i]
+                zeta_new[i] = numpy.sqrt(xx**2/(1+xx**2))
+                omega_new[i] = val.real[i]/zeta_new[i]
+        ybhh = numpy.zeros_like(numpy.dot(numpy.linalg.pinv(phi),yb))
+        if ndof == 1:
+            ybhh = numpy.dot(numpy.linalg.pinv(phi),yb)
+        else:
+            for dof in [2]:
+               ybhh  += numpy.dot(numpy.linalg.pinv(phi[dof::ndof,:]),yb[dof::ndof])
+        for mode in range(phi.shape[1]):
+            if nabs != 0:
+                abs_term = 0
+                for ii in range(len(mi)):
+                    abs_term += mi[ii]*omegat[ii]**2/(omegat[ii]**2-omega**2+2*1j*zeta_abs[ii]*omegat[ii]*omega)
+                Q = omega**2*(1+abs_term)*ybhh[:,0]
+                eta = Q/(omega_new**2-omega**2*(1+abs_term)+2*1j*zeta_new*omega_new*omega)
+            else:
+                Q = omega**2*ybhh[:,0]
+                eta = Q/(omega_new**2-omega**2+2*1j*zeta_new*omega_new*omega)
+        if ndof == 1:        
+            frf.append(numpy.dot(phi[ref_grid-1,:],eta[:])/yb[ref_grid-1,0])
+        else:
+            frf.append(numpy.dot(phi[(ref_grid-1)*ndof+2,:],eta[:])/yb[(ref_grid-1)*ndof+2,0])
+            
+    return frf
+
+def aero_transmissibility_old(struct_mesh_dict,GAF,ks,v,rho,phi,semi_chord,Mhh,Chh,Khh,omega_n,omegas,grids_ids,ref_grid,ndof,nmodes,mi,Mtot,tmode,yb,zeta_abs,nabs=0):
+    '''Calculates the transmissibility function using modal approach'''
+    frf = []
+    mi = numpy.array(mi)
+    if nabs != 0:
+        omega_nt = []
+        for i,md in enumerate(tmode):
+            if type(tmode[i]) == type('Hz'):
+                omega_nt.append(float(tmode[i].replace('Hz',''))*mi[i]*2*numpy.pi)
+            else:
+                omega_nt.append(omega_n[tmode[i]])
+        omegat = 2.0/(1+numpy.sqrt(1+mi))*numpy.array(omega_nt)
+    Mhh_inv = numpy.linalg.pinv(Mhh)
+    for j,omega in enumerate(omegas):
+       #sys.stdout.write('Calculating freq {} of {} with aero effects.\r'.format(j+1,len(omegas)))
+       #sys.stdout.flush()
+        Q = numpy.zeros(nmodes,dtype=complex)
+        eta = numpy.zeros(nmodes,dtype=complex)
+        kfl = omega*semi_chord/v
+        if kfl <= ks[-1]:
+            newGAF = interp_GAF(GAF,ks,kfl) #kfl flow reduced frequency 
+        else:
+            newGAF = (GAF[:,:,-1]-GAF[:,:,-2])*(kfl-ks[-1])/(ks[-1]-ks[-2]) + GAF[:,:,-1]
+        A = numpy.vstack([numpy.hstack([numpy.zeros_like(Mhh),numpy.eye(Mhh.shape[0])]),\
+            numpy.hstack([numpy.dot(-Mhh_inv,Khh-0.5*rho*v**2*newGAF.real),numpy.dot(-Mhh_inv,Chh-0.5*rho*semi_chord*v*newGAF.imag/kfl)])])
+        val, vec = numpy.linalg.eig(A)
+        ind_sort = numpy.argsort(val.imag)
+        val = val[ind_sort][Mhh.shape[0]:2*Mhh.shape[0]]
+        vec = vec[Mhh.shape[0]:Mhh.shape[0]*2,ind_sort][:,Mhh.shape[0]:2*Mhh.shape[0]]
+        phi_aero = vec
+        zeta = numpy.zeros_like(omega_n)
+        omega_n = numpy.zeros_like(omega_n)
+        for ii in range(nmodes):
+            if val.imag[ii] == 0:
+                zeta[ii] = -val.real[ii]
+                omega_n[ii] = 0.0 
+            else:
+                zeta[ii] = numpy.sign(-val.real[ii])*numpy.sqrt((val.real[ii]/val.imag[ii])**2/(1+(val.real[ii]/val.imag[ii])**2))
+                if zeta[ii] != 0:
+                    omega_n[ii] = numpy.absolute(val.real[ii])/zeta[ii]
+                else:
+                    omega_n[ii] = val.imag[ii]
+        phinew = numpy.dot(phi,phi_aero)
+        for ii in range(nmodes):
+            if ndof == 1:
+                phinew[:,ii] /= numpy.max(numpy.absolute(phinew[:,ii]))
+            else:
+                phinew[:,ii] /= numpy.max(numpy.absolute(phinew[2::ndof,ii]))
+        ybhh = numpy.zeros((nmodes,1),dtype=complex)
+        if ndof == 1:
+            ybhh = numpy.dot(numpy.linalg.pinv(phinew),yb)
+        else:
+            for dof in [2]:
+               ybhh  += numpy.dot(numpy.linalg.pinv(phinew[dof::ndof,:]),yb[dof::ndof])
+        for mode in range(phi.shape[1]):
+            if nabs != 0:
+                abs_term = 0
+                for ii in range(len(mi)):
+                    abs_term += mi[ii]*omegat[ii]**2/(omegat[ii]**2-omega**2+2*1j*zeta_abs[ii]*omegat[ii]*omega)
+                Q[mode]  = omega**2*(1+abs_term)*ybhh[mode,0]
+                eta[mode] = Q[mode]/(omega_n[mode]**2-omega**2*(1+abs_term)+2*1j*zeta[mode]*omega_n[mode]*omega)
+            else:
+                Q[mode]  =  omega**2*ybhh[mode,0]
+                eta[mode] = Q[mode]/(omega_n[mode]**2-omega**2+2*1j*zeta[mode]*omega_n[mode]*omega)
+                
+        if ndof == 1:        
+            frf.append(numpy.dot(phinew[ref_grid-1,:],eta[:])/yb[ref_grid-1,0])
+        else:
+            frf.append(numpy.dot(phinew[(ref_grid-1)*ndof+2,:],eta[:])/yb[(ref_grid-1)*ndof+2,0])
+            
+    return frf
+
+
+def solve_ode(M,K,B,grids_wall,omegas,ndof):
+    '''Solves the dynamic response ode of the system with base excitation (No aerodynamics yet)'''
+    t = numpy.linspace(0,40*numpy.pi/omegas[0],500)
+    X = numpy.zeros((M.shape[0]*2,len(t),omegas.shape[0]),dtype=complex)
+    A = numpy.zeros((M.shape[0]*2,M.shape[1]*2))
+    A[0:M.shape[0],M.shape[0]:M.shape[0]*2] = numpy.eye(M.shape[0])
+    A[M.shape[0]:M.shape[0]*2,0:M.shape[0]] = -numpy.dot(numpy.linalg.inv(M),K)
+    A[M.shape[0]:M.shape[0]*2,M.shape[0]:M.shape[0]*2] = -numpy.dot(numpy.linalg.inv(M),B)
+    Fy = numpy.zeros(K.shape[0])
+    m1B = numpy.dot(numpy.linalg.inv(M),B)
+    m1K = numpy.dot(numpy.linalg.inv(M),K)
+    X0i = numpy.zeros((M.shape[0]*2))
+    X0i[1::ndof] = 1.0
+    for i in grids_wall:
+        Fy[ndof*(i-1)+1] = 1.0e-3
+    F = numpy.dot(B,Fy)[ndof*(grids_wall-1)+1]*omegas*(-1j)+numpy.dot(K,Fy)[ndof*(grids_wall-1)+1]
+    F.reshape((len(grids_wall),len(omegas)))
+    for i,f in enumerate(omegas):
+        X[:,:,i] = scipy.integrate.odeint(funcR,X[:,0,i].real,t,args=(A,m1B,m1K,Fy,f,grids_wall,ndof)).T
+        print 'Real part done.'
+       #X[:,:,i] += 1j*scipy.integrate.odeint(funcI,X0i,t,args=(A,m1B,m1K,Fy,f,grids_wall,ndof)).T
+        sys.stdout.write('Calculada freq {} de {}\r'.format(str(i+1).zfill(3),len(omegas)))
+        sys.stdout.flush()
+    return X[0:M.shape[0],:,:], X[M.shape[0]:2*M.shape[0],:,:], t, F
+
+def gust_shape(V,vgust,lgust,x0,x,time):
+    wg = numpy.zeros((len(x),len(time)))
+    for j,t in enumerate(time):
+        for i in range(wg.shape[0]):
+            if (x[i]-x0)/V < t and t < (x[i]-x0+lgust)/V:
+                wg[i,j] = vgust*(1-numpy.cos(2*numpy.pi*V/lgust*(t-(x[i]-x0)/V)))
+    return wg
+
+def harmonic_motion(amplitude,freq,time):
+    acel = numpy.zeros(len(time),dtype=complex)
+    for i,t in enumerate(time):
+        acel[i] = amplitude*numpy.exp(1j*2*numpy.pi*freq*t)*(2*numpy.pi*freq)**2
+    return acel
+
+def white_noise(amplitude,time,dt):
+    h = numpy.random.normal(0, amplitude, size=len(time))
+    return h
+
+def white_noise_accel(amplitude,time,dt):
+    h = numpy.random.normal(0, amplitude, size=len(time))
+    accel = d2y_dx2(h,dt)
+    return accel
+
+def white_noise_gust(wn,dt,Lgust,vel,Vgust):
+    wnfft = numpy.fft.fft(wn)
+    freq = numpy.fft.fftfreq(len(wn),dt)
+    Kg = numpy.sqrt((3*Vgust**2*vel)/(numpy.pi*Lgust))
+    freqsignal = Kg*wnfft*(1j*freq+vel/(numpy.sqrt(3)*Lgust))/(1j*freq+vel/Lgust)**2
+    timesignal = numpy.fft.ifft(freqsignal)
+    accel = dy_dx(timesignal,dt)
+    return accel

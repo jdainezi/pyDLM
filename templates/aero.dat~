@@ -1,0 +1,30 @@
+#Example of aerodynamic geometry input file to use pyDLM
+
+COMPONENT wing xz 8 1 (name, sections orientation, number of strips, 1 = symmetric or 0 = assymetrical)
+        (profile)  x_pos y_pos z_pos theta(deg) chord n_elem_chord
+SECTION flat_plate   0.0   0.0   0.0        0.0   1.0           5
+SECTION flat_plate   0.0   3.0   0.0        0.0   1.0           5
+#SECTION flat_plate   1.0  10.0   0.5        0.0   1.0           13
+#SECTION naca4421.dat   0.0   1.0   0.0        5.0   1.5           22
+#SECTION naca4421.dat   0.0   5.0   0.0        5.0   1.5           22
+#SECTION naca4421.dat   1.0  10.0   0.5        0.0   1.0           22
+#COMPONENT fuselage yz 25 0
+#SECTION fuselage0.dat  -5.0 -0.125  0.0        0.0  0.25          20
+#SECTION fuselage1.dat  -4.5 -0.75   0.0        0.0   1.5          20
+#SECTION fuselage2.dat  -4.0  -1.0   0.0        0.0   2.0          20
+#SECTION fuselage2.dat  15.0  -1.0   0.0        0.0   2.0          20
+#SECTION fuselage2.dat  15.0   0.0   0.0        0.0   0.0          20
+##SECTION flat_plate  -5.0  -0.5   0.0        0.0   1.0          20
+##SECTION flat_plate  -4.0 -0.75   0.0        0.0   1.5          20
+##SECTION flat_plate  -2.0  -1.0   0.0        0.0   2.0          20
+##SECTION flat_plate  15.0  -1.0   0.0        0.0   2.0          20
+#COMPONENT vtp xy 10 0
+#SECTION naca0009.dat  14.0   0.0   1.0        0.0   1.0           68
+#SECTION naca0009.dat  14.5   0.0   5.0        0.0   0.5           68
+##SECTION flat_plate  14.0   0.0   1.0        0.0   1.0           68
+##SECTION flat_plate  14.5   0.0   5.0        0.0   0.5           68
+#COMPONENT htp xz 15 1
+#SECTION naca0009.dat  14.0   1.0   0.0        0.0   1.0           68
+#SECTION naca0009.dat  14.5   5.0   1.0        0.0   0.5           68
+##SECTION flat_plate  14.0   1.0   0.0        0.0   1.0           68
+##SECTION flat_plate  14.5   5.0   1.0        0.0   0.5           68

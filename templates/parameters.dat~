@@ -1,0 +1,135 @@
+#Example of parameters input file to use pyDLM
+
+#Number of cores for parallel computation
+ncores: 4
+
+#Number of structural degrees of freedom
+ndof: 1
+
+#Choose structural model (modal = assumed modes, fem = NASTRAN finite element mesh)
+model: modal
+
+#Strutural model, clamped or not 
+clamped_model: 0
+
+#Damping [proportional (alpha, beta) or flat (gama)]
+#damping: proportional 0.0 0.0
+damping: flat 0.0014
+
+#Nodes to clamp in the structural model
+#clamped_nodes: 1 31 61 91 121 151 181 211 241 271
+#30 60 90 120 150 180 210 240 270 300
+#1 31 61 91 121 151 181 211 241 271
+
+#Path containing the structural data (x,y,z,M,K)
+FEM_path: /home/jh/Documents/scripts/pyDLM/templates
+
+#FEM lenght unit:
+FEM_unit: mm [m or mm]
+
+#reduced frequencies
+#k: 0.0 0.005 0.01 0.025 0.05 0.075 0.1 0.12 0.14 0.17 0.2 0.22 0.3 0.4 0.5 0.6 0.7 0.8 1.3 1.5 2.0 2.5 3.0 3.5 3.9 4.0
+# 0.0 0.01 0.1 0.12 0.17 0.22 0.4 0.6 0.8 1.3
+
+#Mean aerodynamic chord
+c_bar: 1.0
+
+#Reference area [in m^2]
+Sref: 0.44
+
+#Angle of attack in degrees
+AOA: 10
+
+#x coordinate of the rotation axis, or CG
+x_rot: 0.5
+
+#Number of modes to be considered
+n_modes: 10
+
+#Altitude (in m)
+h: 350
+
+#Velocities for flutter analysis in m/s [initial:step:final]
+V: 5:0.1:50
+
+#Velocity [range] for static or frf analysis in m/s
+v: 20 30 40 50
+
+#Generate divergence video or not:
+div_video: 0
+
+#Generate time response video or not:
+time_video: 0
+
+#Generate flutter video or not:
+flutter_video: 0
+
+#Plot GAF interpolation:
+gaf_interp: 1
+
+#Frequency resolution (number of points) for frf plots
+freqlen: 500
+
+#Target mode (or frequency) for shock absorbers [tmode set1  tmode set2  ... freq1Hz  ...]
+tmode: 3 5.22Hz
+
+#Base excitation type ('bending' ou 'torsion')
+ext_shape: bending
+
+#Grids IDs from shock absorbers location [set1 , set2 , ...]
+sgrids: 2 4 6 8 10 82 84 86 88 90 , 42 44 46 48 50
+
+#Reference grid for FRF plot:
+ref_grid: 30
+
+#Option to disable infinite resonator approximation
+inf_abs: 0
+
+#Reference mass component (for shock absorbers)
+abs_comp: wing_right 
+
+#Mass ratio for absorbers [mi set1  mi set2  ... ]
+mi: 0.7 0.7
+
+#Damping ratio of each absorber set [zeta1 zeta2 ...]
+abs_damping: 0.2 0.1
+
+#Wall nodes to apply transmissibility force
+wall_nodes: 1 31 61 91 121 151 181 211 241 271
+
+##Time solution parameters
+#Include gust excitation or not
+gust: 1
+
+#gust length [m]
+Lgust: 0.5
+
+#gust velocity [m/s]
+Vgust: 5
+
+#gust start point (in x direction) [m]
+x0gust = 0
+
+#Final physical time [s]
+tmax: 10.0
+
+#Time step[s]:
+dt: 0.025
+
+#Airflow velocity for time solution[m/s]:
+vtime: 65.2
+
+#Base motion amplitude [m]:
+amplitude: 0.01
+
+#Base motion frequency [Hz]
+freq_t: 5.22
+
+# Original model (no absorbers) or modified model ['original' or 'absorbers']
+time_model: absorbers
+
+#Type of analysis (0 = no, 1 = yes)
+static: 0
+flutter: 0
+frf: 1
+time_solve: 1

@@ -1,0 +1,40 @@
+#Example of structural input file to use pyDLM
+
+#Structural information for NASTRAN structural model
+
+#COMPONENT wing
+#damping: 0.0001 0.0005 (Rayleigh proportional damping alpha and beta #reads only for the first component)
+#spline: IPS (IPS for surfaces, beam, or RBA (rigid body attachment))
+#grids: 1-165 (nastran grid IDs from component nodes)
+#nx: 15
+#ny: 11
+
+#Structural information for assumed modes
+
+COMPONENT wing 1 (name, 1 = symmetric or 0 = assymetrical)
+clamped: 1 (0 = unclamped, 1 = clamped in x_0)
+rho_m: 2700 [density in kg/m3]
+E: 70E9 [Young Modulus in Pa]
+nu: 0.3 (Poison modulus)
+damping: 0.0 0.0 (Rayleigh proportional damping alpha and beta)
+type: plate (plate or beam)
+spline: IPS (IPS for surfaces, beam, or RBA (rigid body attachment))
+section: rectangular
+x_0: 0 [m]
+y_0: 0
+z_0: 0
+sweep_angle: 0 [deg]
+x_lenght: 1.0 [m]
+y_lenght: 3.0
+z_lenght: 0.01
+nx: 10 [number of nodes in x direction] 
+ny: 30
+
+#information about component linking
+
+##(Components to be joined, local IDs component1, local IDs component2, stiffness, dof, stiffness, dof, ...)
+#JOINT wing_right wing_left 1,271 1,271 1E9 0 
+
+
+
+

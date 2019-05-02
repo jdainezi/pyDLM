@@ -1,0 +1,41 @@
+import numpy, scipy.linalg, pdb
+
+def modal(M,C,K,modes,ndof,clamped):
+   
+    if ndof != 6:
+        eigenvalue,phi = numpy.linalg.eig(numpy.dot(numpy.linalg.inv(M),K))
+        order = numpy.argsort(eigenvalue)
+        eigenvalue = numpy.sort(eigenvalue)
+
+        phi = phi[:,order]
+        for i in range(phi.shape[1]):
+            phi[:,i] /= max(numpy.absolute(phi[:,i]))
+        phi = phi.real
+    else:
+        eigenvalue,phi = numpy.linalg.eig(numpy.dot(numpy.linalg.inv(M),K))
+        order = numpy.argsort(eigenvalue)
+        eigenvalue = numpy.sort(eigenvalue)
+
+        phi = phi[:,order]
+        for i in range(phi.shape[1]):
+            phi[:,i] /= max(numpy.absolute(phi[2::ndof,i]))
+        phi = phi.real
+    
+    #Removing rigid-body modes:
+    if clamped == '0':
+        nrb = 0
+        for egv in eigenvalue:
+            if egv<0.1 and egv.real != egv.real*2:
+                nrb+=1
+        nrb = numpy.max([nrb,ndof])
+    else:
+        nrb = 0
+    
+    # Selecting desired modes to proceed with the calculations.
+    phi = phi[:,modes+nrb]
+    eigenvalue = numpy.sqrt(eigenvalue[modes+nrb]).real
+   #diagM = numpy.diag(numpy.dot(numpy.dot(phi.T,M),phi))
+    Mhh = numpy.dot(numpy.dot(phi.T,M),phi)#/diagM #Mass normalization
+    Chh = numpy.dot(numpy.dot(phi.T,C),phi)#/diagM
+    Khh = numpy.dot(numpy.dot(phi.T,K),phi)#/diagM
+    return phi,Mhh,Chh,Khh,eigenvalue

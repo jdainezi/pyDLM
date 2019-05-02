@@ -1,0 +1,176 @@
+import numpy, pdb, sys
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import scipy.optimize
+sys.path.append('/home/jh/Documents/scripts/projects/utils')
+
+def omega_nm(nmodes,D,L1,L2,rho,nu):
+    omega_nm = numpy.zeros((nmodes,nmodes))
+    Gx = numpy.zeros(nmodes)
+    Gy = numpy.zeros(nmodes)
+    Hx = numpy.zeros(nmodes)
+    Hy = numpy.zeros(nmodes)
+    Jx = numpy.zeros(nmodes)
+    Jy = numpy.zeros(nmodes)
+    for i in range(nmodes):
+        if i==0:
+            Gx[i]=0.597
+            Hx[i]=-0.087
+            Jx[i]=0.471
+        elif i==1:
+            Gx[i]=1.494
+            Hx[i]=1.347
+            Jx[i]=3.284
+        else: 
+            Gx[i]=i+1-0.5 #+1 pq i deveria comecar em 1
+            Hx[i]=(i+1-0.5)**2*(1-2/((i+1-0.5)*numpy.pi))
+            Jx[i]=(i+1-0.5)**2*(1+2/((i+1-0.5)*numpy.pi))
+    for j in range(nmodes):
+        if j==1:
+            Jy[j]=12/numpy.pi**2
+        elif j==2:
+            Gy[j]=1.506
+            Hy[j]=1.248
+            Jy[j]=5.017
+        elif j>=3: 
+            Gy[j]=j-0.5 
+            Hy[j]=(j-0.5)**2*(1-2/((j-0.5)*numpy.pi))
+            Jy[j]=(j-0.5)**2*(1+2/((j-0.5)*numpy.pi))
+    for i in range(nmodes):
+        omega_nm[i,:] = numpy.sqrt(numpy.pi**4*D/(L1**4*rho)*(Gx[i]**4+Gy**4*(L1/L2)**4+2*(L1/L2)**2*(nu*Hx[i]*Hy+(1-nu)*Jx[i]*Jy)))
+    return omega_nm
+
+def calc_gama1(gama1):
+    return numpy.tan(gama1/2) + numpy.tanh(gama1/2)
+
+def calc_gama2(gama2):
+    return numpy.tan(gama2/2) - numpy.tanh(gama2/2)
+
+def calc_gama3(gama3):
+    return numpy.cos(gama3)*numpy.cosh(gama3)+1
+
+def calc_X(x,L1,gama3,mode):
+    X = numpy.cos(gama3[mode]*x/L1)\
+    -numpy.cosh(gama3[mode]*x/L1)\
+    +((numpy.sin(gama3[mode])-numpy.sinh(gama3[mode]))\
+    /(numpy.cos(gama3[mode])+numpy.cosh(gama3[mode])))\
+    *(numpy.sin(gama3[mode]*x/L1)-numpy.sinh(gama3[mode]*x/L1))
+    return X
+
+def calc_Y(y,L2,gama1,gama2,mode):
+    if mode == 0:
+        Y[:,:] = 1
+    elif mode == 1:
+        Y[:,:] = 1-2*y/L2
+    elif mode%2 == 0:
+        Y[:,:] = numpy.cos(gama1[mode]*(y/L2-0.5)) - numpy.sin(gama1[mode]/2)/numpy.sinh(gama1[mode]/2)*numpy.cosh(gama1[mode]*(y/L2-0.5))
+    elif mode%2 != 0:
+        Y[:,:] = numpy.sin(gama2[mode]*(y/L2-0.5)) - numpy.sin(gama2[mode]/2)/numpy.sinh(gama2[mode]/2)*numpy.sinh(gama2[mode]*(y/L2-0.5))
+    return Y
+
+def naca_t(x):
+    '''Return the thickness distribution of a naca0012 foil'''
+    t = 0.12/0.2*(0.2969*x**0.5-0.126*x-0.3516*x**2+0.2843*x**3-0.1036*x**4)
+    return t
+
+E=70E9 #Al
+tp=2.5e-2
+nu=0.3
+rho=2700
+
+D=tp**3*E/(12*(1-nu**2))
+L1=3.0
+L2=1.0
+
+nmodes=6
+
+xsteps=15
+ysteps=10
+x=((numpy.ones((xsteps,ysteps))).T*numpy.linspace(0,L1,xsteps)).T
+y=numpy.ones((xsteps,ysteps))*numpy.linspace(0,L2,ysteps)
+
+mode=[1,0]
+tmax= 5.0
+tsteps= 300
+t=numpy.linspace(0,tmax,tsteps)
+w=numpy.zeros((xsteps,ysteps,tsteps))
+X=numpy.zeros_like(x)
+Y=numpy.zeros_like(y)
+gama1 = numpy.zeros(nmodes)
+gama2 = numpy.zeros(nmodes)
+gama3 = numpy.zeros(nmodes)
+
+for i in range(nmodes):
+    gama1[i] = scipy.optimize.ridder(calc_gama1,(2*i-1)*numpy.pi+1.0e-12,(2*i+1)*numpy.pi)
+    gama2[i] = scipy.optimize.ridder(calc_gama2,(2*i-1)*numpy.pi+1.0e-12,(2*i+1)*numpy.pi)
+    gama3[i] = scipy.optimize.ridder(calc_gama3,(i)*numpy.pi,(i+1)*numpy.pi)
+
+omega = omega_nm(nmodes,D,L1,L2,rho,nu)
+print omega/(2*numpy.pi)
+dx = L1/xsteps
+dy = L2/ysteps
+
+all_modes = [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]]
+
+with open('modes','w') as outfile:
+    outfile.write(str(omega[:,0])+'\n')
+    for i,mode in enumerate(all_modes):
+        X[:,:] = numpy.cos(gama3[mode[0]]*x/L1)\
+        -numpy.cosh(gama3[mode[0]]*x/L1)\
+        +((numpy.sin(gama3[mode[0]])-numpy.sinh(gama3[mode[0]]))\
+        /(numpy.cos(gama3[mode[0]])+numpy.cosh(gama3[mode[0]])))\
+        *(numpy.sin(gama3[mode[0]]*x/L1)-numpy.sinh(gama3[mode[0]]*x/L1))
+        outfile.write(str(X[:,0])+'\n')
+        if mode[1] == 0:
+            Y[:,:] = 1
+        elif mode[1] == 1:
+            Y[:,:] = 1-2*y/L2
+        elif mode[1]%2 == 0:
+            Y[:,:] = numpy.cos(gama1[mode[1]]*(y/L2-0.5)) - numpy.sin(gama1[mode[1]]/2)/numpy.sinh(gama1[mode[1]]/2)*numpy.cosh(gama1[mode[1]]*(y/L2-0.5))
+        elif mode[1]%2 != 0:
+            Y[:,:] = numpy.sin(gama2[mode[1]]*(y/L2-0.5)) - numpy.sin(gama2[mode[1]]/2)/numpy.sinh(gama2[mode[1]]/2)*numpy.sinh(gama2[mode[1]]*(y/L2-0.5))
+
+for i in range(tsteps):
+    w[:,:,i] = X*Y*numpy.sin(omega[mode[0],mode[1]]*i*tmax/tsteps)
+print omega[mode[0],mode[1]]
+#numpy.savetxt('f_{}{}.txt'.format(mode[0],mode[1]),omega[mode[0],mode[1]])
+#numpy.savetxt('w_{}{}.txt'.format(mode[0],mode[1]),w)
+
+for i in range(tsteps):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_wireframe(x,y, 0.5*w[:,:,i]/numpy.max([numpy.max(w),-numpy.min(w)])+naca_t(y),color='blue')
+    ax.plot_wireframe(x,y, 0.5*w[:,:,i]/numpy.max([numpy.max(w),-numpy.min(w)])-naca_t(y),color='blue')
+    ax.set_zlim([-1.5,1.5])
+    ax.set_ylim([-1.5,1.5])
+    ax.view_init(elev=45,azim=-45)
+    ax.set_title('t={0:.4f}s'.format(i*tmax/tsteps,3))
+    fig.savefig('figures/{}.png'.format(i))
+    plt.close()
+
+def love_kirchhoff(Lx,Ly,EI,mi,x,y,nmodes):
+
+    return phi, omega_n
+
+
+def euler_modes(L,EI,mi,x,nmodes):
+    phi = []
+    omega_n = []
+    beta = numpy.array([1.875,4.6941,7.8547,10.9955])/L
+    for i in range(nmodes):
+        try:
+            betak = beta[i]
+        except:
+            betak = (2*(i+1)-1)*numpy.pi/(2*L)
+        sigmak = (numpy.sin(betak*L)-numpy.sinh(betak*L))/(numpy.cos(betak*L)+numpy.cosh(betak*L))
+        if betak == 0:
+            phi.append(numpy.ones_like(x))
+        elif i<10:
+            phi.append(numpy.cos(betak*x)-numpy.cosh(betak*x)+sigmak*(numpy.sin(betak*x)-numpy.sinh(betak*x)))
+        else:
+            phi.append(numpy.cos(betak*x)-numpy.sin(betak*x)-numpy.exp(-betak*x)-numpy.exp(betak*x-betak*L)*(numpy.sin(betak*L)))
+        omega_n.append(betak**2*numpy.sqrt(EI/mi))
+    phi = numpy.array(phi).T
+    omega_n = numpy.array(omega_n)
+    
+    return phi, omega_n
